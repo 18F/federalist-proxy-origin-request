@@ -1,9 +1,9 @@
 const handlerLogWrapper = require('./helpers/handlerLogWrapper');
 const {
-  getSite, parseURI, getSiteQueryParams,
+  getSiteItem, parseURI, getSiteQueryParams, getBuildQueryParams, getSitePath
 } = require('./helpers/dynamoDBHelper');
 
-const { getHost } = require('./helpers/utils');
+const Utils = require('./helpers/utils');
 
 const originRequest = async (event, context) => {
   const { request } = event.Records[0].cf;
@@ -12,34 +12,47 @@ const originRequest = async (event, context) => {
     * Reads query string to check if S3 origin should be used, and
     * if true, sets S3 origin properties.
     */
-  const host = getHost(request);
-  const params = getSiteQueryParams(host, context.functionName);
-  return getSite(params)
-    .then((site) => {
-      const { BucketName: bucket } = site;
+  const params = getSiteQueryParams(Utils.getHost(request), context.functionName);
+  const site = await getSiteItem(params);
+    
+  const { BucketName: bucket } = site;
 
-      if (bucket) {
-        const s3DomainName = `${bucket}.app.cloud.gov`;
+  if (bucket) {
+    const s3DomainName = `${bucket}.app.cloud.gov`;
 
-        request.origin = {
-          custom: {
-            domainName: s3DomainName,
-            port: 443,
-            protocol: 'https',
-            sslProtocols: ['TLSv1', 'TLSv1.1'],
-            readTimeout: 5,
-            keepaliveTimeout: 5,
-            customHeaders: {},
-          },
-        };
-        request.headers.host = [{ key: 'host', value: s3DomainName }];
-      }
-      return request;
-    });
+    request.origin = {
+      custom: {
+        domainName: s3DomainName,
+        port: 443,
+        protocol: 'https',
+        sslProtocols: ['TLSv1', 'TLSv1.1'],
+        readTimeout: 5,
+        keepaliveTimeout: 5,
+        customHeaders: {},
+      },
+    };
+    request.headers.host = [{ key: 'host', value: s3DomainName }];
+  }
+  return request;
 };
 
-const originResponse = async (event) => {
-  const { response } = event.Records[0].cf;
+const originResponse = async (event, context) => {
+  const { request, response } = event.Records[0].cf; 
+  if (['404', '403'].includes(response.status)) {
+    const host = Utils.getHost(request);
+    const sitePath = getSitePath(request);
+    const params = getBuildQueryParams(host, sitePath, context.functionName);
+    const build = await getSiteItem(params);
+    const { Settings: { spa } } = build;
+    if ([true, 'true', 'True'].includes(spa)) {
+      const errorDocPath = [sitePath, 'index.html'].join('/');
+      const errorDocResponse = await Utils.httpsGet({ hostname: host, errorDocPath });
+      response.body = errorDocResponse.body;
+      response.status = errorDocResponse.status;
+      response.headers = { ...response.headers, ...Utils.formatHeaders(errorDocResponse.headers) } ;
+    }
+  }
+
   response.headers['strict-transport-security'] = [
     { key: 'Strict-Transport-Security', value: 'max-age=31536001; preload' },
   ];
@@ -66,9 +79,8 @@ const viewerRequest = async (event, context) => {
     return request;
   }
 
-  const host = getHost(request);
-  const params = getSiteQueryParams(host, context.functionName);
-  return getSite(params)
+  const params = getSiteQueryParams(Utils.getHost(request), context.functionName);
+  return getSiteItem(params)
     .then((site) => {
       const { Settings: { BasicAuth: credentials } } = site;
 

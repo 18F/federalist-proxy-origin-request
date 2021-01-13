@@ -6,21 +6,21 @@ const appConfig = {
   test: {
     domain: 'sites-test.federalist.18f.gov',
     tableName: 'federalist-proxy-test',
-    siteKey: 'Id',
+    tableKey: 'Id',
   },
   staging: {
     domain: 'sites-staging.federalist.18f.gov',
     tableName: 'federalist-proxy-staging',
-    siteKey: 'Id',
+    tableKey: 'Id',
   },
   prod: {
     domain: 'sites-prod.federalist.18f.gov',
     tableName: 'federalist-proxy-prod',
-    siteKey: 'Id',
+    tableKey: 'Id',
   },
 };
 
-const getSite = async (params) => {
+const getSiteItem = async (params) => {
   const docClient = new AWS.DynamoDB.DocumentClient({
     httpOptions: { connectTimeout: 120000, timeout: 120000 },
   });
@@ -56,15 +56,23 @@ const stripSiteIdFromHost = (host, appDomain) => {
   throw new Error(`Unable to strip siteId from @host: ${host}`);
 };
 
+const getQueryParams = (tableName, tableKey, tableKeyValue) => ({
+  TableName: tableName,
+  Key: {
+    [tableKey]: tableKeyValue,
+  },
+});
+
 const getSiteQueryParams = (host, functionName) => {
-  const { tableName, siteKey, domain } = getAppConfig(functionName);
+  const { tableName, tableKey, domain } = getAppConfig(functionName);
   const siteKeyValue = stripSiteIdFromHost(host, domain);
-  return {
-    TableName: tableName,
-    Key: {
-      [siteKey]: siteKeyValue,
-    },
-  };
+  return getQueryParams(tableName, tableKey, siteKeyValue);
+};
+
+const getBuildQueryParams = (host, path, functionName) => {
+  const { tableName, tableKey } = getAppConfig(functionName);
+  const buildKeyValue = [host, path].join('');
+  return getQueryParams(tableName, tableKey, buildKeyValue);
 };
 
 const parseURI = (request) => {
@@ -77,6 +85,24 @@ const parseURI = (request) => {
   };
 };
 
+const getSitePath = (request) => {
+  const {
+    branch, owner, repository, siteType,
+  } = parseURI(request);
+  let sitePath = [siteType, owner, repository].join('/');
+  if (siteType === 'preview') {
+    sitePath = [siteType, owner, repository, branch].join('/');
+  }
+  return `/${sitePath}`;
+};
+
 module.exports = {
-  getSite, parseURI, getSiteQueryParams, stripSiteIdFromHost, getAppConfig, functionNameRE,
+  getSiteItem,
+  parseURI,
+  getSiteQueryParams,
+  getBuildQueryParams,
+  stripSiteIdFromHost,
+  getAppConfig,
+  functionNameRE,
+  getSitePath,
 };

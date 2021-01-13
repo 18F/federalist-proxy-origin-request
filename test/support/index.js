@@ -10,6 +10,32 @@ function stubDocDBQuery(fn) {
     });
 }
 
+const getRequest = () => ({
+  uri: '/site/testOwner/testRepo/index.html',
+  method: 'GET',
+  clientIp: '2001:cdba::3257:9652',
+  headers: {
+    host: [
+      {
+        key: 'Host',
+        value: 'o-owner-r-repo.sites-test.federalist.18f.gov',
+      },
+    ],
+    'user-agent': [
+      {
+        key: 'User-Agent',
+        value: 'Test Agent',
+      },
+    ],
+    'user-name': [
+      {
+        key: 'User-Name',
+        value: 'aws-cloudfront',
+      },
+    ],
+  },
+});
+
 const getRequestEvent = () => ({
   Records: [
     {
@@ -17,31 +43,7 @@ const getRequestEvent = () => ({
         config: {
           distributionId: 'EXAMPLE',
         },
-        request: {
-          uri: '/site/testOwner/testRepo/index.html',
-          method: 'GET',
-          clientIp: '2001:cdba::3257:9652',
-          headers: {
-            host: [
-              {
-                key: 'Host',
-                value: 'o-owner-r-repo.sites-test.federalist.18f.gov',
-              },
-            ],
-            'user-agent': [
-              {
-                key: 'User-Agent',
-                value: 'Test Agent',
-              },
-            ],
-            'user-name': [
-              {
-                key: 'User-Name',
-                value: 'aws-cloudfront',
-              },
-            ],
-          },
-        },
+        request: getRequest(),
       },
     },
   ],
@@ -51,6 +53,7 @@ const getResponseEvent = () => ({
   Records: [
     {
       cf: {
+        request: getRequest(),
         response: {
           headers: {},
           status: '200',
